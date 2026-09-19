@@ -10,7 +10,7 @@
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.30.0" />
     <PackageReference Include="MySqlConnector" Version="2.6.2" />
     <PackageReference Include="OpenCvSharp5" Version="5.0.0.20260905" />
-    <PackageReference Include="OpenCvSharp5.official.runtime.linux-x64" Version="5.0.0.20260905" />
+	<PackageReference Include="OpenCvSharp5.official.runtime.linux-x64.headless" Version="5.0.0.20260905" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 
