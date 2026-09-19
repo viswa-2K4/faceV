@@ -26,10 +26,27 @@ public class FaceModelService
                 "Face recognition model not found.",
                 modelPath);
         }
-
         _session = new InferenceSession(modelPath);
 
         Console.WriteLine($"Face model loaded: {modelPath}");
+
+        foreach (var input in _session.InputMetadata)
+        {
+            Console.WriteLine(
+                $"[FACE MODEL] " +
+                $"InputName={input.Key} | " +
+                $"Type={input.Value.ElementType} | " +
+                $"Dimensions={string.Join("x", input.Value.Dimensions)}");
+        }
+
+        foreach (var output in _session.OutputMetadata)
+        {
+            Console.WriteLine(
+                $"[FACE MODEL] " +
+                $"OutputName={output.Key} | " +
+                $"Type={output.Value.ElementType} | " +
+                $"Dimensions={string.Join("x", output.Value.Dimensions)}");
+        }
     }
 
     public async Task<float[]> GenerateEmbeddingAsync(IFormFile image)

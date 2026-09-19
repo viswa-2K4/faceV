@@ -1,129 +1,257 @@
-﻿using FaceRecognition.Data;
-using FaceRecognition.Helpers;
+﻿using FaceRecognition.Helpers;
 using FaceRecognition.Models;
-using System.Text.Json;
 
-namespace FaceRecognition.Services
+namespace FaceRecognition.Services;
+
+public class FaceRecognitionService
 {
-    public class FaceRecognitionService
+    private readonly FaceModelService _model;
+    private readonly EmployeeFaceCacheService _faceCache;
+    private readonly IConfiguration _configuration;
+
+    public FaceRecognitionService(
+        FaceModelService model,
+        EmployeeFaceCacheService faceCache,
+        IConfiguration configuration)
     {
-        private readonly MySqlConnectionFactory _db;
+        _model = model;
+        _faceCache = faceCache;
+        _configuration = configuration;
+    }
 
-        private readonly FaceModelService _model;
+    // ============================================================
+    // RECOGNIZE EMPLOYEE
+    // ============================================================
 
-        private readonly IConfiguration _configuration;
+    public async Task<RecognitionResponse> RecognizeAsync(
+        IFormFile image,
+        int industryId = 1)
+    {
+        // ========================================================
+        // VALIDATE IMAGE
+        // ========================================================
 
-        public FaceRecognitionService(
-            MySqlConnectionFactory db,
-            FaceModelService model,
-            IConfiguration configuration)
+        if (image == null || image.Length == 0)
         {
-            _db = db;
-            _model = model;
-            _configuration = configuration;
+            return new RecognitionResponse
+            {
+                Success = false,
+                PersonId = null,
+                EmployeeName = null,
+                Similarity = 0,
+                Message = "Image is required."
+            };
         }
 
-        public async Task<RecognitionResponse>
-            RecognizeAsync(IFormFile image)
+        // ========================================================
+        // IMAGE -> EMBEDDING
+        // ========================================================
+
+        var inputEmbedding =
+            await _model.GenerateEmbeddingAsync(image);
+
+        // ========================================================
+        // GET EMPLOYEES FROM HRMS FACE CACHE
+        // ========================================================
+
+        var employees =
+            _faceCache.GetEmployees(industryId);
+
+        if (employees == null || employees.Count == 0)
         {
-            if (image == null ||
-                image.Length == 0)
+            return new RecognitionResponse
             {
-                return new RecognitionResponse
-                {
-                    Success = false,
-                    Message = "Image is required."
-                };
+                Success = false,
+                PersonId = null,
+                EmployeeName = null,
+                Similarity = 0,
+                Message =
+                    "Employee face cache is empty. Refresh the cache first."
+            };
+        }
+
+        // ========================================================
+        // RECOGNITION SETTINGS
+        // ========================================================
+
+        var threshold =
+            _configuration.GetValue<float>(
+                "FaceRecognition:SimilarityThreshold");
+
+        var minimumMargin =
+            _configuration.GetValue<float>(
+                "FaceRecognition:MinimumMargin");
+
+        // ========================================================
+        // FIND BEST MATCH FROM HRMS EMPLOYEES
+        // ========================================================
+
+        CachedEmployeeFace? bestEmployee = null;
+
+        float bestSimilarity = -1;
+
+        float secondBestSimilarity = -1;
+
+        foreach (var employee in employees)
+        {
+            if (employee.Embedding == null ||
+                employee.Embedding.Length == 0)
+            {
+                Console.WriteLine(
+                    $"[FACE MATCH] SKIPPED | " +
+                    $"EmployeeId={employee.EmployeeId} | " +
+                    $"Code={employee.EmployeeCode} | " +
+                    $"Name={employee.EmployeeName} | " +
+                    $"Reason=Empty embedding");
+
+                continue;
             }
 
-            // Image -> embedding
-            var inputEmbedding =
-                await _model.GenerateEmbeddingAsync(
-                    image);
+            var similarity =
+                SimilarityHelper.CosineSimilarity(
+                    inputEmbedding,
+                    employee.Embedding);
 
-            await using var connection =
-                _db.CreateConnection();
+            Console.WriteLine(
+                $"[FACE MATCH] " +
+                $"EmployeeId={employee.EmployeeId}, " +
+                $"Code={employee.EmployeeCode}, " +
+                $"Name={employee.EmployeeName}, " +
+                $"Similarity={similarity:F6}");
 
-            await connection.OpenAsync();
-
-            const string sql = """
-            SELECT PersonId, EmployeeName, Embedding
-            FROM face_embedding;
-            """;
-
-            await using var command =
-                new MySqlConnector.MySqlCommand(
-                    sql,
-                    connection);
-
-            await using var reader =
-                await command.ExecuteReaderAsync();
-
-            long? bestPersonId = null;
-            string? bestEmployeeName = null;
-
-            float bestSimilarity = -1;
-
-            while (await reader.ReadAsync())
+            if (similarity > bestSimilarity)
             {
-                var personId =
-                    reader.GetInt64("PersonId");
-
-                var employeeName =
-      reader.IsDBNull(
-          reader.GetOrdinal("EmployeeName"))
-          ? null
-          : reader.GetString("EmployeeName");
-
-
-                var json =
-                    reader.GetString("Embedding");
-
-                var storedEmbedding =
-                    JsonSerializer
-                        .Deserialize<float[]>(json);
-
-                if (storedEmbedding == null)
-                    continue;
-
-                var similarity =
-                    SimilarityHelper.CosineSimilarity(
-                        inputEmbedding,
-                        storedEmbedding);
-
-                if (similarity > bestSimilarity)
-                {
-                    bestSimilarity = similarity;
-
-                    bestPersonId = personId;
-                    bestEmployeeName = employeeName;
-                }
+                secondBestSimilarity = bestSimilarity;
+                bestSimilarity = similarity;
+                bestEmployee = employee;
             }
-
-            var threshold =
-                _configuration.GetValue<float>(
-                    "FaceRecognition:SimilarityThreshold");
-
-            if (bestPersonId == null ||
-                bestSimilarity < threshold)
+            else if (similarity > secondBestSimilarity)
             {
-                return new RecognitionResponse
-                {
-                    Success = false,
-                    PersonId = null,
-                    Similarity = bestSimilarity,
-                    Message = "No matching person found."
-                };
+                secondBestSimilarity = similarity;
             }
+        }
+
+        // ========================================================
+        // NO VALID EMPLOYEE EMBEDDINGS
+        // ========================================================
+
+        if (bestEmployee == null)
+        {
+            return new RecognitionResponse
+            {
+                Success = false,
+                PersonId = null,
+                EmployeeName = null,
+                Similarity = 0,
+                Message = "No employee face available for recognition."
+            };
+        }
+
+        // ========================================================
+        // CALCULATE MARGIN
+        // ========================================================
+
+        var margin =
+            secondBestSimilarity < 0
+                ? bestSimilarity
+                : bestSimilarity - secondBestSimilarity;
+
+        Console.WriteLine(
+            $"[FACE MATCH] " +
+            $"BestEmployeeId={bestEmployee.EmployeeId} | " +
+            $"BestCode={bestEmployee.EmployeeCode} | " +
+            $"BestName={bestEmployee.EmployeeName} | " +
+            $"BestSimilarity={bestSimilarity:F6} | " +
+            $"SecondBestSimilarity={secondBestSimilarity:F6} | " +
+            $"Margin={margin:F6} | " +
+            $"Threshold={threshold:F6} | " +
+            $"MinimumMargin={minimumMargin:F6}");
+
+        // ========================================================
+        // BELOW THRESHOLD
+        // ========================================================
+
+        if (bestSimilarity < threshold)
+        {
+            Console.WriteLine(
+                $"[FACE MATCH] BELOW THRESHOLD | " +
+                $"HRMS EmployeeId={bestEmployee.EmployeeId} | " +
+                $"Code={bestEmployee.EmployeeCode} | " +
+                $"Name={bestEmployee.EmployeeName} | " +
+                $"Similarity={bestSimilarity:F6}");
 
             return new RecognitionResponse
             {
-                Success = true,
-                PersonId = bestPersonId,
-                EmployeeName = bestEmployeeName,
+                Success = false,
+
+                // KEEP HRMS EMPLOYEE INFORMATION
+                PersonId = bestEmployee.EmployeeId,
+
+                EmployeeName = bestEmployee.EmployeeName,
+
                 Similarity = bestSimilarity,
-                Message = "Person recognized."
+
+                Message =
+                    "HRMS employee found, but face similarity is below the recognition threshold."
             };
         }
+
+        // ========================================================
+        // AMBIGUOUS MATCH
+        // ========================================================
+
+        if (margin < minimumMargin)
+        {
+            Console.WriteLine(
+                $"[FACE MATCH] AMBIGUOUS | " +
+                $"HRMS EmployeeId={bestEmployee.EmployeeId} | " +
+                $"Code={bestEmployee.EmployeeCode} | " +
+                $"Name={bestEmployee.EmployeeName} | " +
+                $"Similarity={bestSimilarity:F6} | " +
+                $"Margin={margin:F6}");
+
+            return new RecognitionResponse
+            {
+                Success = false,
+
+                // KEEP HRMS EMPLOYEE INFORMATION
+                PersonId = bestEmployee.EmployeeId,
+
+                EmployeeName = bestEmployee.EmployeeName,
+
+                Similarity = bestSimilarity,
+
+                Message =
+                    "HRMS employee found, but face match is ambiguous."
+            };
+        }
+
+        // ========================================================
+        // MATCH ACCEPTED
+        // ========================================================
+
+        Console.WriteLine(
+            $"[FACE MATCH] MATCH ACCEPTED | " +
+            $"EmployeeId={bestEmployee.EmployeeId} | " +
+            $"Code={bestEmployee.EmployeeCode} | " +
+            $"Name={bestEmployee.EmployeeName} | " +
+            $"Similarity={bestSimilarity:F6}");
+
+        // ========================================================
+        // RETURN HRMS EMPLOYEE
+        // ========================================================
+
+        return new RecognitionResponse
+        {
+            Success = true,
+
+            PersonId = bestEmployee.EmployeeId,
+
+            EmployeeName = bestEmployee.EmployeeName,
+
+            Similarity = bestSimilarity,
+
+            Message = "Employee recognized."
+        };
     }
 }

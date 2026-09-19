@@ -64,13 +64,15 @@ namespace FaceRecognition.Controllers
         [HttpPost("recognize")]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> Recognize(
-            IFormFile image)
+     IFormFile image,
+     [FromQuery] int industryId = 1)
         {
             try
             {
                 var result =
                     await _recognition.RecognizeAsync(
-                        image);
+                        image,
+                        industryId);
 
                 return Ok(result);
             }
