@@ -110,7 +110,6 @@ D:\Backend_Architecture\FaceV\FaceRecognition\FaceRecognition\obj\Debug\net8.0\s
 D:\Backend_Architecture\FaceV\FaceRecognition\FaceRecognition\obj\Debug\net8.0\staticwebassets.build.json.cache
 D:\Backend_Architecture\FaceV\FaceRecognition\FaceRecognition\obj\Debug\net8.0\staticwebassets.development.json
 D:\Backend_Architecture\FaceV\FaceRecognition\FaceRecognition\obj\Debug\net8.0\staticwebassets.build.endpoints.json
-D:\Backend_Architecture\FaceV\FaceRecognition\FaceRecognition\obj\Debug\net8.0\staticwebassets.upToDateCheck.txt
 D:\Backend_Architecture\FaceV\FaceRecognition\FaceRecognition\obj\Debug\net8.0\FaceReco.D5ABA29B.Up2Date
 D:\Backend_Architecture\FaceV\FaceRecognition\FaceRecognition\obj\Debug\net8.0\FaceRecognition.dll
 D:\Backend_Architecture\FaceV\FaceRecognition\FaceRecognition\obj\Debug\net8.0\refint\FaceRecognition.dll

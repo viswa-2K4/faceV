@@ -2,6 +2,6 @@
 <Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <ActiveDebugProfile>https</ActiveDebugProfile>
-    <NameOfLastUsedPublishProfile>C:\Users\vetri\source\repos\FaceRecognitionAPI\FaceRecognition\Properties\PublishProfiles\app-faceapi-window - Web Deploy.pubxml</NameOfLastUsedPublishProfile>
+    <NameOfLastUsedPublishProfile>app-faceapi-without-python - Zip Deploy</NameOfLastUsedPublishProfile>
   </PropertyGroup>
 </Project>
